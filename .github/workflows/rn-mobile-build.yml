@@ -63,7 +63,7 @@ jobs:
           echo "code_sign_identity_var_name=IOS_${CHANNEL_UPPER}_CODE_SIGN_IDENTITY" >> "$GITHUB_OUTPUT"
           echo "app_display_name_var_name=IOS_${CHANNEL_UPPER}_APP_DISPLAY_NAME" >> "$GITHUB_OUTPUT"
           if [[ "$CHANNEL" == "test" ]]; then
-            echo "default_bundle_identifier=net.heartie.app" >> "$GITHUB_OUTPUT"
+            echo "default_bundle_identifier=com.heartie.app" >> "$GITHUB_OUTPUT"
             echo "default_export_method=ad-hoc" >> "$GITHUB_OUTPUT"
             echo "default_app_display_name=Heartie Test" >> "$GITHUB_OUTPUT"
           else
