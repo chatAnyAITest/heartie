@@ -180,8 +180,9 @@ jobs:
         uses: actions/setup-node@v4
         with:
           node-version: '20'
-          cache: yarn
-          cache-dependency-path: heartie-source/heartalkai-app-rn/yarn.lock
+          registry-url: 'https://registry.npmjs.org'
+          cache: npm
+          cache-dependency-path: heartie-source/heartalkai-app-rn/package-lock.json
 
       - name: Setup Ruby
         uses: ruby/setup-ruby@v1
@@ -195,7 +196,7 @@ jobs:
 
       - name: Install JavaScript dependencies
         working-directory: heartie-source/heartalkai-app-rn
-        run: yarn install --frozen-lockfile
+        run: npm ci
 
       - name: Build iOS IPA artifact
         id: build_ios
@@ -279,8 +280,9 @@ jobs:
         uses: actions/setup-node@v4
         with:
           node-version: '20'
-          cache: yarn
-          cache-dependency-path: heartie-source/heartalkai-app-rn/yarn.lock
+          registry-url: 'https://registry.npmjs.org'
+          cache: npm
+          cache-dependency-path: heartie-source/heartalkai-app-rn/package-lock.json
 
       - name: Setup Java
         uses: actions/setup-java@v4
@@ -290,7 +292,7 @@ jobs:
 
       - name: Install JavaScript dependencies
         working-directory: heartie-source/heartalkai-app-rn
-        run: yarn install --frozen-lockfile
+        run: npm ci
 
       - name: Build Android release artifacts
         working-directory: heartie-source/heartalkai-app-rn
