@@ -110,10 +110,39 @@ jobs:
             echo "Source sha: $SOURCE_SHA"
           fi
 
+  source-snapshot:
+    name: Checkout shared source snapshot
+    runs-on: ubuntu-latest
+    needs: prepare
+    steps:
+      - name: Checkout packaging repo
+        uses: actions/checkout@v4
+
+      - name: Checkout source repo
+        env:
+          MY_GITHUB_TOKEN: ${{ secrets.MY_GITHUB_TOKEN }}
+          SOURCE_REPO: ${{ needs.prepare.outputs.source_repo }}
+          SOURCE_REF: ${{ needs.prepare.outputs.source_ref }}
+          SOURCE_SHA: ${{ needs.prepare.outputs.source_sha }}
+        run: ./scripts/ci/checkout-source.sh heartie-source
+
+      - name: Create source snapshot
+        run: tar -czf heartie-source.tar.gz heartie-source
+
+      - name: Upload source snapshot
+        uses: actions/upload-artifact@v4
+        with:
+          name: heartie-source-${{ needs.prepare.outputs.tag_name }}
+          path: heartie-source.tar.gz
+          retention-days: 7
+          if-no-files-found: error
+
   build-ios-device:
     name: Build signed iOS IPA
     runs-on: macos-latest
-    needs: prepare
+    needs:
+      - prepare
+      - source-snapshot
     env:
       IOS_BUILD_CHANNEL: ${{ needs.prepare.outputs.channel }}
       IOS_TEST_CERTIFICATE_P12_BASE64: ${{ secrets.IOS_TEST_CERTIFICATE_P12_BASE64 }}
@@ -135,16 +164,17 @@ jobs:
     steps:
       - name: Checkout packaging repo
         uses: actions/checkout@v4
-        with:
-          fetch-depth: 0
 
-      - name: Checkout source repo
-        env:
-          MY_GITHUB_TOKEN: ${{ secrets.MY_GITHUB_TOKEN }}
-          SOURCE_REPO: ${{ needs.prepare.outputs.source_repo }}
-          SOURCE_REF: ${{ needs.prepare.outputs.source_ref }}
-          SOURCE_SHA: ${{ needs.prepare.outputs.source_sha }}
-        run: ./scripts/ci/checkout-source.sh heartie-source
+      - name: Download shared source snapshot
+        uses: actions/download-artifact@v4
+        with:
+          name: heartie-source-${{ needs.prepare.outputs.tag_name }}
+
+      - name: Extract shared source snapshot
+        run: tar -xzf heartie-source.tar.gz
+
+      - name: Restore script permissions
+        run: chmod +x heartie-source/heartalkai-app-rn/scripts/ci/build-ios-device.sh
 
       - name: Setup Node.js
         uses: actions/setup-node@v4
@@ -182,8 +212,9 @@ jobs:
   build-android-release:
     name: Build signed Android release artifacts
     runs-on: ubuntu-latest
-    if: ${{ vars.ENABLE_ANDROID_BUILD == 'true' }}
-    needs: prepare
+    needs:
+      - prepare
+      - source-snapshot
     env:
       ANDROID_BUILD_CHANNEL: ${{ needs.prepare.outputs.channel }}
       ANDROID_TEST_KEYSTORE_BASE64: ${{ secrets.ANDROID_TEST_KEYSTORE_BASE64 }}
@@ -201,16 +232,17 @@ jobs:
     steps:
       - name: Checkout packaging repo
         uses: actions/checkout@v4
-        with:
-          fetch-depth: 0
 
-      - name: Checkout source repo
-        env:
-          MY_GITHUB_TOKEN: ${{ secrets.MY_GITHUB_TOKEN }}
-          SOURCE_REPO: ${{ needs.prepare.outputs.source_repo }}
-          SOURCE_REF: ${{ needs.prepare.outputs.source_ref }}
-          SOURCE_SHA: ${{ needs.prepare.outputs.source_sha }}
-        run: ./scripts/ci/checkout-source.sh heartie-source
+      - name: Download shared source snapshot
+        uses: actions/download-artifact@v4
+        with:
+          name: heartie-source-${{ needs.prepare.outputs.tag_name }}
+
+      - name: Extract shared source snapshot
+        run: tar -xzf heartie-source.tar.gz
+
+      - name: Restore script permissions
+        run: chmod +x heartie-source/heartalkai-app-rn/scripts/ci/build-android-release.sh
 
       - name: Setup Node.js
         uses: actions/setup-node@v4
