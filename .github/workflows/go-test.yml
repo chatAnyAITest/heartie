@@ -1,0 +1,172 @@
+name: Go Backend Tests
+
+on:
+  workflow_dispatch:
+    inputs:
+      source_ref:
+        description: Source ref in heartalkai/heartie
+        required: false
+        default: refs/heads/main
+        type: string
+      source_sha:
+        description: Optional source commit SHA in heartalkai/heartie
+        required: false
+        default: ''
+        type: string
+      run_integration:
+        description: Run AI integration tests
+        required: false
+        default: false
+        type: boolean
+
+env:
+  SOURCE_REPO: heartalkai/heartie
+
+jobs:
+  test:
+    name: Run Go Tests
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+
+    services:
+      mysql:
+        image: mysql:8.0
+        env:
+          MYSQL_ROOT_PASSWORD: root
+          MYSQL_DATABASE: heartie_chat_unittest
+        ports:
+          - 3306:3306
+        options: >-
+          --health-cmd="mysqladmin ping -h localhost"
+          --health-interval=10s
+          --health-timeout=5s
+          --health-retries=5
+
+      redis:
+        image: redis:7-alpine
+        ports:
+          - 6379:6379
+        options: >-
+          --health-cmd="redis-cli ping"
+          --health-interval=10s
+          --health-timeout=5s
+          --health-retries=5
+
+    steps:
+      - name: Checkout packaging repo
+        uses: actions/checkout@v4
+
+      - name: Checkout source repo
+        env:
+          MY_GITHUB_TOKEN: ${{ secrets.MY_GITHUB_TOKEN }}
+          SOURCE_REPO: ${{ env.SOURCE_REPO }}
+          SOURCE_REF: ${{ inputs.source_ref }}
+          SOURCE_SHA: ${{ inputs.source_sha }}
+        run: ./scripts/ci/checkout-source.sh heartie-source
+
+      - name: Setup Go
+        uses: actions/setup-go@v5
+        with:
+          go-version: '1.21'
+          cache-dependency-path: heartie-source/heartalkai-go/go.sum
+
+      - name: Cache Go modules
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/.cache/go-build
+            ~/go/pkg/mod
+          key: ${{ runner.os }}-go-${{ hashFiles('heartie-source/heartalkai-go/go.sum') }}
+          restore-keys: |
+            ${{ runner.os }}-go-
+
+      - name: Run tests
+        working-directory: heartie-source/heartalkai-go
+        env:
+          TEST_MYSQL_DSN: root:root@tcp(127.0.0.1:3306)/heartie_chat_unittest?charset=utf8mb4&parseTime=True&loc=Local
+          TEST_REDIS_ADDR: 127.0.0.1:6379
+          LLM_API_URL: ${{ vars.LLM_API_URL }}
+          LLM_API_KEY: ${{ secrets.LLM_API_KEY }}
+          IMAGE_AI_BASE_URL: ${{ vars.IMAGE_AI_BASE_URL }}
+          IMAGE_AI_API_KEY: ${{ secrets.IMAGE_AI_API_KEY }}
+        run: |
+          go test -v -race -coverprofile=coverage.out ./...
+          go tool cover -html=coverage.out -o coverage.html
+
+      - name: Upload coverage report
+        uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: coverage-report
+          path: heartie-source/heartalkai-go/coverage.html
+
+  ai-integration:
+    name: AI Integration Tests
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    if: ${{ inputs.run_integration }}
+    continue-on-error: true
+
+    services:
+      mysql:
+        image: mysql:8.0
+        env:
+          MYSQL_ROOT_PASSWORD: root
+          MYSQL_DATABASE: heartie_chat_unittest
+        ports:
+          - 3306:3306
+        options: >-
+          --health-cmd="mysqladmin ping -h localhost"
+          --health-interval=10s
+          --health-timeout=5s
+          --health-retries=5
+
+      redis:
+        image: redis:7-alpine
+        ports:
+          - 6379:6379
+        options: >-
+          --health-cmd="redis-cli ping"
+          --health-interval=10s
+          --health-timeout=5s
+          --health-retries=5
+
+    steps:
+      - name: Checkout packaging repo
+        uses: actions/checkout@v4
+
+      - name: Checkout source repo
+        env:
+          MY_GITHUB_TOKEN: ${{ secrets.MY_GITHUB_TOKEN }}
+          SOURCE_REPO: ${{ env.SOURCE_REPO }}
+          SOURCE_REF: ${{ inputs.source_ref }}
+          SOURCE_SHA: ${{ inputs.source_sha }}
+        run: ./scripts/ci/checkout-source.sh heartie-source
+
+      - name: Setup Go
+        uses: actions/setup-go@v5
+        with:
+          go-version: '1.21'
+          cache-dependency-path: heartie-source/heartalkai-go/go.sum
+
+      - name: Validate integration secrets
+        env:
+          LLM_API_KEY: ${{ secrets.LLM_API_KEY }}
+          IMAGE_AI_API_KEY: ${{ secrets.IMAGE_AI_API_KEY }}
+        run: |
+          set -euo pipefail
+          if [[ -z "${LLM_API_KEY}" || -z "${IMAGE_AI_API_KEY}" ]]; then
+            echo "LLM_API_KEY and IMAGE_AI_API_KEY are required for integration tests" >&2
+            exit 1
+          fi
+
+      - name: Run AI integration tests
+        working-directory: heartie-source/heartalkai-go
+        env:
+          TEST_MYSQL_DSN: root:root@tcp(127.0.0.1:3306)/heartie_chat_unittest?charset=utf8mb4&parseTime=True&loc=Local
+          TEST_REDIS_ADDR: 127.0.0.1:6379
+          LLM_API_URL: ${{ vars.LLM_API_URL }}
+          LLM_API_KEY: ${{ secrets.LLM_API_KEY }}
+          IMAGE_AI_BASE_URL: ${{ vars.IMAGE_AI_BASE_URL }}
+          IMAGE_AI_API_KEY: ${{ secrets.IMAGE_AI_API_KEY }}
+        run: go test -v -tags integration -timeout 120s ./test/integration/...
