@@ -198,8 +198,39 @@ jobs:
         run: yarn install --frozen-lockfile
 
       - name: Build iOS IPA artifact
+        id: build_ios
+        continue-on-error: true
         working-directory: heartie-source/heartalkai-app-rn
         run: ./scripts/ci/build-ios-device.sh "${{ needs.prepare.outputs.version }}" "${{ needs.prepare.outputs.build_number }}" "${{ needs.prepare.outputs.tag_name }}"
+
+      - name: Show iOS archive errors
+        if: ${{ steps.build_ios.outcome != 'success' }}
+        working-directory: heartie-source/heartalkai-app-rn
+        run: |
+          set -euo pipefail
+          LOG_PATH="build/ios/${{ needs.prepare.outputs.tag_name }}/xcodebuild-archive.log"
+          if [[ -f "$LOG_PATH" ]]; then
+            echo "Found archive log at $LOG_PATH"
+            grep -n "error:" "$LOG_PATH" | tail -n 50 || true
+            tail -n 200 "$LOG_PATH" || true
+          else
+            echo "Archive log not found: $LOG_PATH" >&2
+          fi
+
+      - name: Upload iOS build logs
+        uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: heartie-ios-logs-${{ needs.prepare.outputs.channel }}-${{ needs.prepare.outputs.tag_name }}
+          path: |
+            heartie-source/heartalkai-app-rn/build/ios/${{ needs.prepare.outputs.tag_name }}/
+            heartie-source/heartalkai-app-rn/dist/ios/${{ needs.prepare.outputs.tag_name }}/
+          retention-days: 14
+          if-no-files-found: warn
+
+      - name: Fail iOS job when archive/export failed
+        if: ${{ steps.build_ios.outcome != 'success' }}
+        run: exit 1
 
       - name: Upload iOS artifacts
         uses: actions/upload-artifact@v4
