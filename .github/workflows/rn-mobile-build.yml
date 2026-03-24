@@ -367,3 +367,58 @@ jobs:
           fi
 
           gh release upload "$TAG_NAME" "${release_files[@]}" --clobber
+
+  update-download-page:
+    name: Update GitHub Pages download page
+    runs-on: ubuntu-latest
+    needs:
+      - prepare
+      - publish-github-release
+    if: ${{ needs.publish-github-release.result == 'success' }}
+    steps:
+      - name: Checkout packaging repo
+        uses: actions/checkout@v4
+        with:
+          ref: main
+          token: ${{ secrets.MY_GITHUB_TOKEN || github.token }}
+
+      - name: Resolve release asset URLs
+        id: assets
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
+          TAG_NAME: ${{ needs.prepare.outputs.tag_name }}
+        run: |
+          set -euo pipefail
+          RELEASE_JSON="$(gh release view "$TAG_NAME" --json assets)"
+          IPA_URL="$(echo "$RELEASE_JSON" | jq -r '[.assets[] | select(.name | endswith(".ipa"))][0].url // empty')"
+          APK_URL="$(echo "$RELEASE_JSON" | jq -r '[.assets[] | select(.name | endswith(".apk"))][0].url // empty')"
+          echo "ipa_url=${IPA_URL}" >> "$GITHUB_OUTPUT"
+          echo "apk_url=${APK_URL}" >> "$GITHUB_OUTPUT"
+
+      - name: Update docs for download page
+        run: |
+          set -euo pipefail
+          chmod +x scripts/ci/update-download-page.sh
+          ./scripts/ci/update-download-page.sh
+        env:
+          TAG_NAME: ${{ needs.prepare.outputs.tag_name }}
+          VERSION: ${{ needs.prepare.outputs.version }}
+          CHANNEL: ${{ needs.prepare.outputs.channel }}
+          BUNDLE_ID: ${{ vars[needs.prepare.outputs.bundle_identifier_var_name] || vars.IOS_BUNDLE_IDENTIFIER || needs.prepare.outputs.default_bundle_identifier }}
+          DISPLAY_NAME: ${{ vars[needs.prepare.outputs.app_display_name_var_name] || needs.prepare.outputs.default_app_display_name }}
+          IPA_URL: ${{ steps.assets.outputs.ipa_url }}
+          APK_URL: ${{ steps.assets.outputs.apk_url }}
+
+      - name: Commit and push updated pages
+        run: |
+          set -euo pipefail
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          git add docs/release.json docs/manifest.plist
+          if git diff --cached --quiet; then
+            echo "No changes to commit"
+          else
+            git commit -m "chore: update download page for ${{ needs.prepare.outputs.tag_name }}"
+            git push
+          fi

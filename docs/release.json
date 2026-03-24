@@ -1,0 +1,10 @@
+{
+  "tag_name": "mobile-test-0.0.10",
+  "version": "0.0.10",
+  "channel": "test",
+  "app_display_name": "Heartie Test",
+  "bundle_identifier": "net.heartie.app",
+  "ipa_url": "https://github.com/chatAnyAITest/heartie/releases/download/mobile-test-0.0.10/Heartie-ios-test-mobile-test-0.0.10.ipa",
+  "apk_url": "",
+  "date": "2026-03-24"
+}
