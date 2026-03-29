@@ -4,10 +4,12 @@ set -euo pipefail
 usage() {
   cat <<'EOF'
 Usage:
+  create-tag.sh admin [--bump <patch|minor|major>] [--version <x.y.z>] [--remote <name>] [--source-repo <owner/repo>] [--source-ref <ref>] [--source-sha <sha>] [--dry-run]
   create-tag.sh mobile <prod|test> [--bump <patch|minor|major>] [--version <x.y.z>] [--remote <name>] [--source-repo <owner/repo>] [--source-ref <ref>] [--source-sha <sha>] [--dry-run]
   create-tag.sh server [--bump <patch|minor|major>] [--version <x.y.z>] [--remote <name>] [--source-repo <owner/repo>] [--source-ref <ref>] [--source-sha <sha>] [--dry-run]
 
 Examples:
+  ./scripts/release/create-tag.sh admin
   ./scripts/release/create-tag.sh mobile prod
   ./scripts/release/create-tag.sh mobile test --bump minor
   ./scripts/release/create-tag.sh server --source-ref refs/heads/main
@@ -55,6 +57,10 @@ latest_version_for_pattern() {
     | awk -v mode="$mode" '
         mode == "server" && $0 ~ /^v[0-9]+\.[0-9]+\.[0-9]+$/ {
           sub(/^v/, "", $0)
+          print
+        }
+        mode == "admin" && $0 ~ /^admin-[0-9]+\.[0-9]+\.[0-9]+$/ {
+          sub(/^admin-/, "", $0)
           print
         }
         mode == "mobile" && $0 ~ /^mobile-(prod|test)-[0-9]+\.[0-9]+\.[0-9]+$/ {
@@ -111,6 +117,12 @@ SOURCE_SHA=""
 DRY_RUN="false"
 
 case "$TARGET" in
+  admin)
+    TAG_PREFIX="admin-"
+    TAG_PATTERN="admin-*"
+    VERSION_MODE="admin"
+    SOURCE_REPO="heartalkai/heartalkai-admin"
+    ;;
   mobile)
     CHANNEL="${1:-}"
     if [[ "$CHANNEL" != "prod" && "$CHANNEL" != "test" ]]; then
@@ -244,6 +256,8 @@ git push "$REMOTE" "$TAG_NAME"
 
 if [[ "$TARGET" == "mobile" ]]; then
   echo "Triggered mobile CI for $TAG_NAME"
+elif [[ "$TARGET" == "admin" ]]; then
+  echo "Triggered admin CI for $TAG_NAME"
 else
   echo "Triggered server deploy for $TAG_NAME"
 fi

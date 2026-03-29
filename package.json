@@ -2,6 +2,7 @@
   "name": "heartie-packaging",
   "private": true,
   "scripts": {
+    "tag:admin": "bash ./scripts/release/create-tag.sh admin",
     "tag:mobile:prod": "bash ./scripts/release/create-tag.sh mobile prod",
     "tag:mobile:test": "bash ./scripts/release/create-tag.sh mobile test",
     "tag:server": "bash ./scripts/release/create-tag.sh server"

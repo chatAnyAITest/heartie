@@ -1,0 +1,200 @@
+name: Build and Deploy Admin via Docker Hub
+
+on:
+  push:
+    tags:
+      - 'admin-*'
+  workflow_dispatch:
+    inputs:
+      version:
+        description: Release version for admin image
+        required: true
+        type: string
+      source_ref:
+        description: Source ref in heartalkai/heartalkai-admin
+        required: false
+        default: refs/heads/main
+        type: string
+      source_sha:
+        description: Optional source commit SHA in heartalkai/heartalkai-admin
+        required: false
+        default: ''
+        type: string
+      docker_image:
+        description: Docker image repository
+        required: false
+        default: chatanyai/heartadmin
+        type: string
+      publish_latest:
+        description: Also push latest tag
+        required: false
+        default: true
+        type: boolean
+
+permissions:
+  contents: read
+
+env:
+  SOURCE_REPO: heartalkai/heartalkai-admin
+  DEFAULT_DOCKER_IMAGE: chatanyai/heartadmin
+
+jobs:
+  prepare:
+    name: Resolve admin release
+    runs-on: ubuntu-latest
+    outputs:
+      version: ${{ steps.meta.outputs.version }}
+      source_repo: ${{ steps.meta.outputs.source_repo }}
+      source_ref: ${{ steps.meta.outputs.source_ref }}
+      source_sha: ${{ steps.meta.outputs.source_sha }}
+      docker_image: ${{ steps.meta.outputs.docker_image }}
+      publish_latest: ${{ steps.meta.outputs.publish_latest }}
+    steps:
+      - name: Checkout packaging repo
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Resolve metadata
+        id: meta
+        shell: bash
+        env:
+          EVENT_NAME: ${{ github.event_name }}
+          DEFAULT_SOURCE_REPO: ${{ env.SOURCE_REPO }}
+          DEFAULT_DOCKER_IMAGE: ${{ env.DEFAULT_DOCKER_IMAGE }}
+          INPUT_VERSION: ${{ inputs.version }}
+          INPUT_SOURCE_REF: ${{ inputs.source_ref }}
+          INPUT_SOURCE_SHA: ${{ inputs.source_sha }}
+          INPUT_DOCKER_IMAGE: ${{ inputs.docker_image }}
+          INPUT_PUBLISH_LATEST: ${{ inputs.publish_latest }}
+        run: |
+          set -euo pipefail
+
+          extract_field() {
+            local text="$1"
+            local key="$2"
+            printf '%s\n' "$text" | sed -n "s/^${key}:[[:space:]]*//p" | head -n 1
+          }
+
+          if [[ "$EVENT_NAME" == "push" ]]; then
+            TAG_NAME="${GITHUB_REF_NAME}"
+            if [[ ! "$TAG_NAME" =~ ^admin-([0-9]+\.[0-9]+\.[0-9]+)$ ]]; then
+              echo "Unsupported tag format: $TAG_NAME" >&2
+              exit 1
+            fi
+            VERSION="${BASH_REMATCH[1]}"
+            TAG_MESSAGE="$(git tag -l --format='%(contents)' "$TAG_NAME")"
+            SOURCE_REPO="$(extract_field "$TAG_MESSAGE" 'source-repo')"
+            SOURCE_REF="$(extract_field "$TAG_MESSAGE" 'source-ref')"
+            SOURCE_SHA="$(extract_field "$TAG_MESSAGE" 'source-sha')"
+            DOCKER_IMAGE="$DEFAULT_DOCKER_IMAGE"
+            PUBLISH_LATEST="true"
+          else
+            VERSION="$INPUT_VERSION"
+            SOURCE_REPO="$DEFAULT_SOURCE_REPO"
+            SOURCE_REF="$INPUT_SOURCE_REF"
+            SOURCE_SHA="$INPUT_SOURCE_SHA"
+            DOCKER_IMAGE="$INPUT_DOCKER_IMAGE"
+            PUBLISH_LATEST="$INPUT_PUBLISH_LATEST"
+            if [[ ! "$VERSION" =~ ^[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
+              echo "Version must match x.y.z" >&2
+              exit 1
+            fi
+          fi
+
+          if [[ -z "$SOURCE_REPO" ]]; then
+            SOURCE_REPO="$DEFAULT_SOURCE_REPO"
+          fi
+          if [[ -z "$SOURCE_REF" ]]; then
+            SOURCE_REF="refs/heads/main"
+          fi
+          if [[ -z "$DOCKER_IMAGE" ]]; then
+            DOCKER_IMAGE="$DEFAULT_DOCKER_IMAGE"
+          fi
+
+          echo "version=$VERSION" >> "$GITHUB_OUTPUT"
+          echo "source_repo=$SOURCE_REPO" >> "$GITHUB_OUTPUT"
+          echo "source_ref=$SOURCE_REF" >> "$GITHUB_OUTPUT"
+          echo "source_sha=$SOURCE_SHA" >> "$GITHUB_OUTPUT"
+          echo "docker_image=$DOCKER_IMAGE" >> "$GITHUB_OUTPUT"
+          echo "publish_latest=$PUBLISH_LATEST" >> "$GITHUB_OUTPUT"
+
+  build-push:
+    name: Build and Push Admin Docker Image
+    runs-on: ubuntu-latest
+    needs: prepare
+    steps:
+      - name: Checkout packaging repo
+        uses: actions/checkout@v4
+
+      - name: Checkout source repo
+        env:
+          MY_GITHUB_TOKEN: ${{ secrets.MY_GITHUB_TOKEN }}
+          SOURCE_REPO: ${{ needs.prepare.outputs.source_repo }}
+          SOURCE_REF: ${{ needs.prepare.outputs.source_ref }}
+          SOURCE_SHA: ${{ needs.prepare.outputs.source_sha }}
+        run: ./scripts/ci/checkout-source.sh heartie-source
+
+      - name: Setup pnpm
+        uses: pnpm/action-setup@v4
+        with:
+          version: 10
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: pnpm
+          cache-dependency-path: heartie-source/frontend/pnpm-lock.yaml
+
+      - name: Install frontend dependencies
+        working-directory: heartie-source/frontend
+        run: pnpm install --frozen-lockfile
+
+      - name: Build frontend assets
+        working-directory: heartie-source/frontend
+        run: pnpm run build
+
+      - name: Sync frontend build into backend
+        shell: bash
+        run: |
+          set -euo pipefail
+          rm -rf heartie-source/backend/internal/router/ui/build
+          mkdir -p heartie-source/backend/internal/router/ui/build
+          cp -R heartie-source/frontend/dist/. heartie-source/backend/internal/router/ui/build/
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Login to Docker Hub
+        uses: docker/login-action@v3
+        with:
+          username: ${{ secrets.DOCKERHUB_USERNAME }}
+          password: ${{ secrets.DOCKERHUB_TOKEN }}
+
+      - name: Build tag list
+        id: tags
+        shell: bash
+        env:
+          DOCKER_IMAGE: ${{ needs.prepare.outputs.docker_image }}
+          VERSION: ${{ needs.prepare.outputs.version }}
+          PUBLISH_LATEST: ${{ needs.prepare.outputs.publish_latest }}
+        run: |
+          set -euo pipefail
+          {
+            echo 'tags<<EOF'
+            echo "${DOCKER_IMAGE}:${VERSION}"
+            if [[ "$PUBLISH_LATEST" == "true" ]]; then
+              echo "${DOCKER_IMAGE}:latest"
+            fi
+            echo 'EOF'
+          } >> "$GITHUB_OUTPUT"
+
+      - name: Build and Push
+        uses: docker/build-push-action@v6
+        with:
+          context: ./heartie-source/backend
+          push: true
+          tags: ${{ steps.tags.outputs.tags }}
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
