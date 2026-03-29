@@ -204,18 +204,35 @@ jobs:
         working-directory: heartie-source/heartalkai-app-rn
         run: ./scripts/ci/build-ios-device.sh "${{ needs.prepare.outputs.version }}" "${{ needs.prepare.outputs.build_number }}" "${{ needs.prepare.outputs.tag_name }}"
 
-      - name: Show iOS archive errors
+      - name: Show iOS build errors
         if: ${{ steps.build_ios.outcome != 'success' }}
         working-directory: heartie-source/heartalkai-app-rn
         run: |
           set -euo pipefail
-          LOG_PATH="build/ios/${{ needs.prepare.outputs.tag_name }}/xcodebuild-archive.log"
-          if [[ -f "$LOG_PATH" ]]; then
-            echo "Found archive log at $LOG_PATH"
-            grep -n "error:" "$LOG_PATH" | tail -n 50 || true
-            tail -n 200 "$LOG_PATH" || true
+          BUILD_DIR="build/ios/${{ needs.prepare.outputs.tag_name }}"
+          ARCHIVE_LOG_PATH="$BUILD_DIR/xcodebuild-archive.log"
+          EXPORT_LOG_PATH="$BUILD_DIR/xcodebuild-export.log"
+          SECRETS_EXPORT_OPTIONS_PATH=".ci-secrets/ios/exportOptions.plist"
+
+          if [[ -f "$ARCHIVE_LOG_PATH" ]]; then
+            echo "Found archive log at $ARCHIVE_LOG_PATH"
+            grep -n "error:" "$ARCHIVE_LOG_PATH" | tail -n 50 || true
+            tail -n 200 "$ARCHIVE_LOG_PATH" || true
           else
-            echo "Archive log not found: $LOG_PATH" >&2
+            echo "Archive log not found: $ARCHIVE_LOG_PATH" >&2
+          fi
+
+          if [[ -f "$EXPORT_LOG_PATH" ]]; then
+            echo "Found export log at $EXPORT_LOG_PATH"
+            grep -n "error:" "$EXPORT_LOG_PATH" | tail -n 50 || true
+            tail -n 200 "$EXPORT_LOG_PATH" || true
+          else
+            echo "Export log not found: $EXPORT_LOG_PATH" >&2
+          fi
+
+          if [[ -f "$SECRETS_EXPORT_OPTIONS_PATH" ]]; then
+            echo "Generated exportOptions.plist:"
+            cat "$SECRETS_EXPORT_OPTIONS_PATH"
           fi
 
       - name: Upload iOS build logs
@@ -231,7 +248,9 @@ jobs:
 
       - name: Fail iOS job when archive/export failed
         if: ${{ steps.build_ios.outcome != 'success' }}
-        run: exit 1
+        run: |
+          echo "iOS build failed. See the previous 'Show iOS build errors' step and uploaded log artifacts." >&2
+          exit 1
 
       - name: Upload iOS artifacts
         uses: actions/upload-artifact@v4

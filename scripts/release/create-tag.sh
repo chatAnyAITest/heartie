@@ -49,6 +49,12 @@ bump_version() {
   printf '%s.%s.%s\n' "$major" "$minor" "$patch"
 }
 
+max_version() {
+  local left="$1"
+  local right="$2"
+  printf '%s\n%s\n' "$left" "$right" | sort -V | tail -n 1
+}
+
 latest_version_for_pattern() {
   local tag_pattern="$1"
   local mode="$2"
@@ -115,6 +121,7 @@ SOURCE_REPO="heartalkai/heartie"
 SOURCE_REF="refs/heads/main"
 SOURCE_SHA=""
 DRY_RUN="false"
+MIN_ADMIN_VERSION="0.2.20"
 
 case "$TARGET" in
   admin)
@@ -206,6 +213,9 @@ git fetch "$REMOTE" --tags --force
 LATEST_VERSION="$(latest_version_for_pattern "$TAG_PATTERN" "$VERSION_MODE")"
 if [[ -z "$LATEST_VERSION" ]]; then
   LATEST_VERSION="0.0.0"
+fi
+if [[ "$VERSION_MODE" == "admin" ]]; then
+  LATEST_VERSION="$(max_version "$LATEST_VERSION" "$MIN_ADMIN_VERSION")"
 fi
 
 if [[ -n "$EXPLICIT_VERSION" ]]; then
