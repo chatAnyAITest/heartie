@@ -5,13 +5,13 @@ usage() {
   cat <<'EOF'
 Usage:
   create-tag.sh admin [--bump <patch|minor|major>] [--version <x.y.z>] [--remote <name>] [--source-repo <owner/repo>] [--source-ref <ref>] [--source-sha <sha>] [--dry-run]
-  create-tag.sh mobile <prod|test> [--bump <patch|minor|major>] [--version <x.y.z>] [--remote <name>] [--source-repo <owner/repo>] [--source-ref <ref>] [--source-sha <sha>] [--dry-run]
+  create-tag.sh mobile <ios|android> <prod|test> [--bump <patch|minor|major>] [--version <x.y.z>] [--remote <name>] [--source-repo <owner/repo>] [--source-ref <ref>] [--source-sha <sha>] [--dry-run]
   create-tag.sh server [--bump <patch|minor|major>] [--version <x.y.z>] [--remote <name>] [--source-repo <owner/repo>] [--source-ref <ref>] [--source-sha <sha>] [--dry-run]
 
 Examples:
   ./scripts/release/create-tag.sh admin
-  ./scripts/release/create-tag.sh mobile prod
-  ./scripts/release/create-tag.sh mobile test --bump minor
+  ./scripts/release/create-tag.sh mobile ios prod
+  ./scripts/release/create-tag.sh mobile android test --bump minor
   ./scripts/release/create-tag.sh server --source-ref refs/heads/main
 EOF
 }
@@ -82,6 +82,28 @@ latest_version_for_pattern() {
     | tail -n 1
 }
 
+latest_mobile_version_for_channel() {
+  local channel="$1"
+
+  git tag --list "mobile*" \
+    | awk -v channel="$channel" '
+        $0 ~ ("^mobile-(ios|android)-" channel "-[0-9]+\\.[0-9]+\\.[0-9]+$") {
+          sub("^mobile-(ios|android)-" channel "-", "", $0)
+          print
+        }
+        channel == "prod" && $0 ~ /^mobile-[0-9]+\.[0-9]+\.[0-9]+$/ {
+          sub(/^mobile-/, "", $0)
+          print
+        }
+        $0 ~ ("^mobile-" channel "-[0-9]+\\.[0-9]+\\.[0-9]+$") {
+          sub("^mobile-" channel "-", "", $0)
+          print
+        }
+      ' \
+    | sort -V \
+    | tail -n 1
+}
+
 normalize_source_ref() {
   local ref="$1"
   if [[ "$ref" == refs/* ]]; then
@@ -114,6 +136,7 @@ fi
 shift
 
 CHANNEL=""
+MOBILE_PLATFORM=""
 BUMP_TYPE="patch"
 EXPLICIT_VERSION=""
 REMOTE="origin"
@@ -131,6 +154,13 @@ case "$TARGET" in
     SOURCE_REPO="heartalkai/heartalkai-admin"
     ;;
   mobile)
+    MOBILE_PLATFORM="${1:-}"
+    if [[ "$MOBILE_PLATFORM" != "ios" && "$MOBILE_PLATFORM" != "android" ]]; then
+      echo "mobile target requires platform ios or android" >&2
+      usage
+      exit 1
+    fi
+    shift
     CHANNEL="${1:-}"
     if [[ "$CHANNEL" != "prod" && "$CHANNEL" != "test" ]]; then
       echo "mobile target requires channel prod or test" >&2
@@ -138,8 +168,8 @@ case "$TARGET" in
       exit 1
     fi
     shift
-    TAG_PREFIX="mobile-${CHANNEL}-"
-    TAG_PATTERN="mobile-*"
+    TAG_PREFIX="mobile-${MOBILE_PLATFORM}-${CHANNEL}-"
+    TAG_PATTERN="mobile-${MOBILE_PLATFORM}-${CHANNEL}-*"
     VERSION_MODE="mobile"
     ;;
   server)
@@ -210,7 +240,11 @@ SOURCE_REF="$(normalize_source_ref "$SOURCE_REF")"
 
 git fetch "$REMOTE" --tags --force
 
-LATEST_VERSION="$(latest_version_for_pattern "$TAG_PATTERN" "$VERSION_MODE")"
+if [[ "$VERSION_MODE" == "mobile" ]]; then
+  LATEST_VERSION="$(latest_mobile_version_for_channel "$CHANNEL")"
+else
+  LATEST_VERSION="$(latest_version_for_pattern "$TAG_PATTERN" "$VERSION_MODE")"
+fi
 if [[ -z "$LATEST_VERSION" ]]; then
   LATEST_VERSION="0.0.0"
 fi
@@ -220,6 +254,8 @@ fi
 
 if [[ -n "$EXPLICIT_VERSION" ]]; then
   NEXT_VERSION="$EXPLICIT_VERSION"
+elif [[ "$VERSION_MODE" == "mobile" && "$BUMP_TYPE" == "patch" && "$LATEST_VERSION" != "0.0.0" ]] && ! git rev-parse -q --verify "refs/tags/${TAG_PREFIX}${LATEST_VERSION}" >/dev/null; then
+  NEXT_VERSION="$LATEST_VERSION"
 else
   NEXT_VERSION="$(bump_version "$LATEST_VERSION" "$BUMP_TYPE")"
 fi
@@ -265,7 +301,7 @@ git tag -a "$TAG_NAME" -m "$TAG_MESSAGE"
 git push "$REMOTE" "$TAG_NAME"
 
 if [[ "$TARGET" == "mobile" ]]; then
-  echo "Triggered mobile CI for $TAG_NAME"
+  echo "Triggered mobile ${MOBILE_PLATFORM} CI for $TAG_NAME"
 elif [[ "$TARGET" == "admin" ]]; then
   echo "Triggered admin CI for $TAG_NAME"
 else

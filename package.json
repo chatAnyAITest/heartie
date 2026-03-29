@@ -2,9 +2,15 @@
   "name": "heartie-packaging",
   "private": true,
   "scripts": {
+    "mobile:prod:android": "npm run tag:mobile:prod:android --",
+    "mobile:prod:ios": "npm run tag:mobile:prod:ios --",
+    "mobile:test:android": "npm run tag:mobile:test:android --",
+    "mobile:test:ios": "npm run tag:mobile:test:ios --",
     "tag:admin": "bash ./scripts/release/create-tag.sh admin",
-    "tag:mobile:prod": "bash ./scripts/release/create-tag.sh mobile prod",
-    "tag:mobile:test": "bash ./scripts/release/create-tag.sh mobile test",
+    "tag:mobile:prod:android": "bash ./scripts/release/create-tag.sh mobile android prod",
+    "tag:mobile:prod:ios": "bash ./scripts/release/create-tag.sh mobile ios prod",
+    "tag:mobile:test:android": "bash ./scripts/release/create-tag.sh mobile android test",
+    "tag:mobile:test:ios": "bash ./scripts/release/create-tag.sh mobile ios test",
     "tag:server": "bash ./scripts/release/create-tag.sh server"
   }
 }
