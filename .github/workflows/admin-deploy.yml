@@ -11,12 +11,12 @@ on:
         required: true
         type: string
       source_ref:
-        description: Source ref in heartalkai/heartalkai-admin
+        description: Source ref in heartalkai/heartie
         required: false
         default: refs/heads/main
         type: string
       source_sha:
-        description: Optional source commit SHA in heartalkai/heartalkai-admin
+        description: Optional source commit SHA in heartalkai/heartie
         required: false
         default: ''
         type: string
@@ -35,7 +35,7 @@ permissions:
   contents: read
 
 env:
-  SOURCE_REPO: heartalkai/heartalkai-admin
+  SOURCE_REPO: heartalkai/heartie
   DEFAULT_DOCKER_IMAGE: chatanyai/heartadmin
 
 jobs:
@@ -145,23 +145,23 @@ jobs:
         with:
           node-version: '20'
           cache: pnpm
-          cache-dependency-path: heartie-source/frontend/pnpm-lock.yaml
+          cache-dependency-path: heartie-source/admin/frontend/pnpm-lock.yaml
 
       - name: Install frontend dependencies
-        working-directory: heartie-source/frontend
+        working-directory: heartie-source/admin/frontend
         run: pnpm install --frozen-lockfile
 
       - name: Build frontend assets
-        working-directory: heartie-source/frontend
+        working-directory: heartie-source/admin/frontend
         run: pnpm run build
 
       - name: Sync frontend build into backend
         shell: bash
         run: |
           set -euo pipefail
-          rm -rf heartie-source/backend/internal/router/ui/build
-          mkdir -p heartie-source/backend/internal/router/ui/build
-          cp -R heartie-source/frontend/dist/. heartie-source/backend/internal/router/ui/build/
+          rm -rf heartie-source/admin/backend/internal/router/ui/build
+          mkdir -p heartie-source/admin/backend/internal/router/ui/build
+          cp -R heartie-source/admin/frontend/dist/. heartie-source/admin/backend/internal/router/ui/build/
 
       - name: Set up Docker Buildx
         uses: docker/setup-buildx-action@v3
@@ -193,7 +193,7 @@ jobs:
       - name: Build and Push
         uses: docker/build-push-action@v6
         with:
-          context: ./heartie-source/backend
+          context: ./heartie-source/admin/backend
           push: true
           tags: ${{ steps.tags.outputs.tags }}
           cache-from: type=gha

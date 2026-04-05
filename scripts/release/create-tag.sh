@@ -151,7 +151,7 @@ case "$TARGET" in
     TAG_PREFIX="admin-"
     TAG_PATTERN="admin-*"
     VERSION_MODE="admin"
-    SOURCE_REPO="heartalkai/heartalkai-admin"
+    SOURCE_REPO="heartalkai/heartie"
     ;;
   mobile)
     MOBILE_PLATFORM="${1:-}"
