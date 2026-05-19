@@ -1,10 +1,10 @@
 {
-  "tag_name": "mobile-ios-prod-0.0.14",
-  "version": "0.0.14",
+  "tag_name": "mobile-ios-prod-0.0.15",
+  "version": "0.0.15",
   "channel": "prod",
   "app_display_name": "Heartie",
   "bundle_identifier": "net.heartie.app",
-  "ipa_url": "https://github.com/chatAnyAITest/heartie/releases/download/mobile-ios-prod-0.0.14/Heartie-ios-prod-mobile-ios-prod-0.0.14.ipa",
+  "ipa_url": "https://github.com/chatAnyAITest/heartie/releases/download/mobile-ios-prod-0.0.15/Heartie-ios-prod-mobile-ios-prod-0.0.15.ipa",
   "apk_url": "https://github.com/chatAnyAITest/heartie/releases/download/mobile-test-0.0.14/heartie-release-0.0.14.apk",
-  "date": "2026-05-11"
+  "date": "2026-05-19"
 }
